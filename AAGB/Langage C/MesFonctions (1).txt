@@ -1,0 +1,214 @@
+// MesFonctions
+/* Préambule : Rappel signification des variables utilisées : 
+- pFG et pFD sont les sous-arbres
+- abr-> pS est la sequence d’ADN et sa structure
+- abr est le nœud
+
+Quelques fonctions supplémentaires
+1.1.1 Libérer la mémoire
+Nom de la fonction : void libererABR(tyABR *abr)
+Definition : */
+void libererABR(tyABR *abr) { 
+//la fonction va permettre de libérer toute la mémoire des arbres binaires
+    if (abr == NULL) return;
+    
+  //pour libérer les ss-arbres gauche et droit
+    libererABR(abr->pFG);
+    libererABR(abr->pFD);
+    
+    // pour la libzration de la seq d'ADN
+    FreeSeq(abr->pS->seq);  // Libérer la séquence
+    free(abr->pS);          // Libérer la structure contenant la séquence
+    
+    // enfin on libere le noeud
+    free(abr);
+}
+/*Pour appeler ces fonctions on peut employer directement la fonction libererABR
+Libération de l'arbre des ORF et des CDS */
+libererABR(abrORF);
+libererABR(abrCDS); 
+/* peut être utilisé après la dernière question de l’exercice*/
+/*Contenu des arguments : 
+- pFG et pFD : qui sont les sous arbres gauche et droit
+- abr -> pS : qui représente la séquence et sa structure
+- abr : qui est le noeud
+Valeur de retour : pas de retour attendu, seulement libération de la mémoire.
+Rôle de la fonction : libérer de l’espace et allouer toute la mémoire des arbres binaires.
+Structures : Chaque nouveau champs doit être commenté.
+
+1.1.2 Comparer ORF et CDS
+Nom de la fonction : comparerSeq(char *seq1, char *seq2) ,
+Définition de la fonction : */
+int comparerSeq(char *seq1, char *seq2) {
+    return strcmp(seq1, seq2) == 0;  //va donner 1 si identiques, 0 si pas identique
+}
+void comparerORFandCDS(tyABR *abrORF, tyABR *abrCDS) {
+    if (abrORF == NULL || abrCDS == NULL) {
+        printf("Un des arbres est vide\n");
+        return;
+    }
+    int countCommon = 0;  // compteur de correspondances entre ORF et CDS.
+    int totalORF = nb_noeud(abrORF);  // nolbre total de ORF
+    int totalCDS = nb_noeud(abrCDS);  // nbre total de CDS
+    
+    // pour parcoirir lees ORF et les cimparer avec les CDS
+    tyABR *currentORF = abrORF;
+    while (currentORF != NULL) {
+        tyABR *currentCDS = abrCDS;
+        while (currentCDS != NULL) {
+            if (comparerSeq(currentORF->pS->seq, currentCDS->pS->seq)) {
+                countCommon++;
+                break;  // si la correspondance est trouvée, on arrete de chercher pour cet ORF
+            }
+            currentCDS = currentCDS->pFD;
+        }
+        currentORF = currentORF->pFD;
+    }
+    
+    // pour l'zffichage des resultats
+    printf("Sur les %d ORF trouvées :\n", totalORF);
+    printf("%d (%f%%) des ORF sont des CDS\n", countCommon, (100.0 * countCommon) / totalORF);
+    printf("%d (%f%%) des ORF ne sont pas des CDS\n", totalORF - countCommon, (100.0 * (totalORF - countCommon)) / totalORF);
+    printf("%d CDS (%f%%) n'ont pas été trouvées\n", totalCDS - countCommon, (100.0 * (totalCDS - countCommon)) / totalCDS);
+} 
+/*Arguments : 
+- abrORF et abrCDS : pointeur vers (respectivement) arbre des ORF et CDS
+Retour : Nombre de séquences communes entre les deux arbres.
+
+Explication : la fonction parcourt les arbres et compare chaque sequence. Si identique, la fonction incrémente le countCommon.
+
+1.1.3 Chercher les ORF dans le brin complémenaire */
+tyABR* findORF_ABR(tySeqADN *pS) {
+    tyABR *pABR = NULL;
+    int iSeq;
+    int tIStart[3] = {-1, -1, -1};
+    // poyr la recherche des ORF dans le brin direct
+    for (iSeq = 0; iSeq < pS->lg - 2; iSeq++) {
+        if (estStart(pS->seq + iSeq)) {
+            if (tIStart[iSeq % 3] == -1) {
+                tIStart[iSeq % 3] = iSeq;
+            }
+        } else if (estStop(pS->seq + iSeq)) {
+            if (tIStart[iSeq % 3] != -1) {
+                pABR = Ajouter_ABR(pABR, NewSeqADN(iSeq - tIStart[iSeq % 3] + 3, pS->seq + tIStart[iSeq % 3]));
+                tIStart[iSeq % 3] = -1;
+            }
+        }
+    }
+/* ------ code proposé pour que la fonction puisse rechercher le brin complémentaire-----------*/
+// pour rechercher les ORF dans le brin complémentaire
+    char *seq_complementaire = BrinComplementaire(pS->seq, pS->lg);
+    for (iSeq = 0; iSeq < pS->lg - 2; iSeq++) {
+        if (estStart(seq_complementaire + iSeq)) {
+            if (tIStart[iSeq % 3] == -1) {
+                tIStart[iSeq % 3] = iSeq;
+            }
+        } else if (estStop(seq_complementaire + iSeq)) {
+            if (tIStart[iSeq % 3] != -1) {
+                pABR = Ajouter_ABR(pABR, NewSeqADN(iSeq - tIStart[iSeq % 3] + 3, seq_complementaire + tIStart[iSeq % 3]));
+                tIStart[iSeq % 3] = -1;
+            }
+        }
+    }
+    free(seq_complementaire);
+    return pABR;
+}
+/* Filtrer les ORF selon la longueur et le GC3 
+1.1.4 Caractéristiques des CDS et des ORF dans des fichiers
+Nom de la fonction : ecrire_caracteristiques(tyABR *abr, const char *nomFichier)
+Définition de fonction : */
+void ecrire_caracteristiques(tyABR *abr, const char *nomFichier) {
+    FILE *fichier = fopen(nomFichier, "w");
+    if (!fichier) {
+        fprintf(stderr, "Erreur lors de l'ouverture du fichier.\n");
+        return;
+    }
+
+    fprintf(fichier, "lg GC GC1 GC2 GC3\n");
+
+    while (abr != NULL) {
+        float gc = calculer_gc(abr->pS->seq, abr->pS->lg);
+        float gc1 = calculer_gc_phase(abr->pS->seq, abr->pS->lg, 1);
+        float gc2 = calculer_gc_phase(abr->pS->seq, abr->pS->lg, 2);
+        float gc3 = calculer_gc_phase(abr->pS->seq, abr->pS->lg, 3);
+
+        fprintf(fichier, "%d %.6f %.6f %.6f %.6f\n",
+                abr->pS->lg, gc, gc1, gc2, gc3);
+
+        abr = abr->pFD;  // Parcours de l'arbre
+    }
+
+    fclose(fichier);
+}
+/*Arguments : 
+- Abr : arbre des sequences (ORF ou CDS) + nom du fichier de sortie
+Retour : pas de sortie attendue
+Explication : cette fonction parcourt l’arbre binaire des séquences et calcul les caractéristiques pour chaque séquence qui sont enregistrés dans un fichier.
+Interprétation des figures : 
+Nous avons trois graphiques lesquelles représentent :
+- La distribution des longueurs en fonction de lg pour les ORF montre qu’ils sont particulièrement dense pour un lg inférieur à 150 UA (obtenu par produit en croix à partir du fait que à partir de 3 rectangles sur 20 qui correspondent à lg = 1000) , et devient nulle pour des longueurs supérieurs à 150 UA. Pour les CDS, leur distribution est plus étendues en fonctions des longueurs mais pour chaque longueur lg, on voit qu’elle reste très faible, et devient nulle à partir de lg = 2000 UA. 
+- GC des CDS : on voit que le pourcentage de GC est de 0.3 ; en GC1 de 0.45, en GC2 de 0.35 ; et en GC3 de 0.2.
+- GC des ORF trouvés : tous les GC ont une moyenne semblable (appr. à 0.35).
+Si on compare les graphiques ensemble, on en déduit que : 
+-  pour filtrer les ORF selon la longueur : on peut prendre le seuil lg = 150 UA
+- Pour filtrer les ORF selon le taux de GC3 : on peut prendre le seuil (minimal) de 0.32 (pour GC3 proportion d’environ 0.35 mais majorité des points expérimentaux bien au-dessus)
+
+1.1.5 Filtrer les ORF selon la longueur et selon le taux de GC3
+Nom de la fonction : void filtrerORF (tyABR *abr, int minLg, float minGC3, float maxGC3)
+Definition de la fonction : */
+void filtrerORF(tyABR *abr, int minLg, float minGC3, float maxGC3) {
+    if (abr == NULL) return;
+    // Calcul du GC3
+    float GC1, GC2, GC3;
+    All_GC(abr->pS->seq, abr->pS->lg, &GC1, &GC2, &GC3);
+    // Filtrage par longueur et GC3
+    if (abr->pS->lg < minLg || GC3 < minGC3 || GC3 > maxGC3) {
+        // Marque cette ORF comme filtrée (ici 0 = filtrée, 1 = non filtrée)
+        abr->pS->isFiltered = 0;
+    } else {
+        abr->pS->isFiltered = 1;
+    }
+    // appels de maniere recursive pour filtrer les sous-arbres gauche et droit
+    filtrerORF(abr->pFG, minLg, minGC3, maxGC3); //pour filtrer le ss-arbre gauche
+    filtrerORF(abr->pFD, minLg, minGC3, maxGC3);  //pour filtrer le ss-arbre droit
+}
+/*Arguments : 
+- Abr : arbre des ORF
+- minLg : longueur minimale des ORF
+- minGC3 et maxGC3 / limite du taux en GC3
+Retour : la fonction modifie l’arbre seulement. Pas de retour attendu donc.
+Explication : la fonction va parcourir l’arbre des ORF et filtrer les ORF en fonction de leur longueur et leur taux en GC3.
+
+1.2 Filtrer les ORF selon la présence de séquences RBS
+Nom de la function : contientRBS(char *seq) 
+Définition de la fonction : */
+int contientRBS(char *seq) {
+    // Vérifier la présence de motifs RBS
+    return (strstr(seq, "AGGA") != NULL || strstr(seq, "GGAGG") != NULL ||);
+}
+void filtrerORF_RBS(tyABR *abr) {
+    if (abr == NULL) return;
+    // Filtrer l'ORF par la présence d'un RBS
+    if (contientRBS(abr->pS->seq)) {
+        abr->pS->hasRBS = 1;  // Marquer l'ORF comme ayant un RBS
+    } else {
+        abr->pS->hasRBS = 0;  // Marquer l'ORF comme sans RBS
+    }
+    // pour appelzr de manière rcursive pour les sous-arbres :
+    filtrerORF_RBS(abr->pFG);
+    filtrerORF_RBS(abr->pFD);
+}
+/*Argument :  chaine de caractère (=char *seq) ; 
+
+
+Retour : int  qui est un 1 si l'un des motifs RBS est trouvé dans la sequence, et 0 sinon ; 
+Expl : la fonction recherche 2 motifs possibles (AGGA ou GGAGG) dans la seq en argument. */
+
+
+
+
+
+
+
+
+
